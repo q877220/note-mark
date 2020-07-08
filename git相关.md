@@ -13,8 +13,8 @@
 >> git rebase --ontomaster YYY^
 
 - 合并feature分支的某个文件(f.txt)到master分支上
-1. git checkout feature
-2. git checkout --patch master f.txt
+1. git checkout master
+2. git checkout --patch featrue f.txt
 
 - 将feature分支的文件copy到master分支
 1. git checkout master
