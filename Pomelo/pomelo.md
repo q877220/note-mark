@@ -103,3 +103,51 @@
 
 # 问题汇总
 1. 如何执行到component的stop回调？
+
+# source code mark
+1. node.js[精灵进程启动方法](https://nodejs.org/docs/latest-v10.x/api/child_process.html#child_process_options_detached, '官网示例')
+```
+const { spawn } = require('child_process');
+
+const subprocess = spawn(process.argv[0], ['child_program.js'], {
+  detached: true,  //父进程退出后，子进程可以仍然可以运行
+  stdio: 'ignore'  //断开继承自父终端的STDIO
+});
+
+subprocess.unref();  //调用该方法后父进程将不会等待子进程退出
+```
+2. pomelo项目启动时，环境变量获取顺序。(实例根据环境变更从config/servers.json中加载相关配置)
+```
+//启动参数中env->NODE_ENV环境变量->默认的development
+var setupEnv = function(app, args) {
+  app.set(Constants.RESERVED.ENV, args.env || process.env.NODE_ENV || Constants.RESERVED.ENV_DEV, true);
+};
+```
+3. pomelo项目启动顺序([框架执行流](https://github.com/NetEase/pomelo/wiki/Framework-execution-flow))
+```
+    a. 通过pomelo命令行启动，如：
+        pomelo start -e localhost -t macher //node执行pomelo脚本
+    b. 命令行以child_process.spawn方法启动子进程（根据命令行拼接参数），如：
+        node /root/mjserver/game-server/app.js env=localhost type=macher
+    c. 上步中进程通过env,type从配置文件({projectRoot}/config/servers)中找到指定服务参数，并以child_porcess的spawn方法启动子进程，如下：
+        node /root/mjserver/game-server/app.js env=localhost restart-force=false auto-restart=false id=matcher0000 host=127.0.0.1 port=5050 serverType=matcher
+```
+4. master服务启动过程：
+```
+    a. 通过pomelo命令行启动，如：
+        pomelo start -e localhost -t master //node执行pomelo脚本
+    b. 命令行以child_process.spawn方法启动子进程（根据命令行拼接参数），如：
+        node /root/mjserver/game-server/app.js env=localhost type=master
+        b.1: 将pomelo包的lib目录下的components,filters,pushSchedulers,connectors等组件添加到Pomelo对象的相应属性（部分属性类型为function）
+        b.2: 加载master,monitor组件（将两个组件的工厂函数添加到App的loaded数组）
+        b.3: 执行lifecycleCbs对象的beforeStartup方法（如有， 每个服务都可以在{projectRoot}/app/servers/{type}/lifecycle.js配置）
+        b.4: 按顺序执行b.2中添加的组件的start方法
+            //以master组件为例说明start方法
+            b.4.1: 注册默认的模块（pomelo/lib/modules/masterwatcher,pomelo/lib/modules/console,pomelo-admin/lib/modules/watchServer），即：将这些模块的工厂方法挂载到APP的__modules__属性上
+            b.4.2: 加载模块，即：依次执行APP.__modules__工厂方法，并将返回实例依次追加到Master方法的modules数组属性中
+
+
+        b.5: 按顺序执行b.2中添加的对象的afterStart方法
+        b.6: 执行lifecycle对象的afterStartup方法
+        b.7: 发射start_server事件（monitor中监听该事件）
+```
