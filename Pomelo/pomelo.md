@@ -139,15 +139,37 @@ var setupEnv = function(app, args) {
     b. 命令行以child_process.spawn方法启动子进程（根据命令行拼接参数），如：
         node /root/mjserver/game-server/app.js env=localhost type=master
         b.1: 将pomelo包的lib目录下的components,filters,pushSchedulers,connectors等组件添加到Pomelo对象的相应属性（部分属性类型为function）
-        b.2: 加载master,monitor组件（将两个组件的工厂函数添加到App的loaded数组）
+        b.2: 加载master,monitor组件（将两个组件的实例添加到App的loaded数组，同时在App的components对象中以键值对<实例名称，实例>维护
+            //以master组件为例说明加载过程
+            b.2.1: master实例成员masterConsole是ConsoleService类的一个实例
+            b.2.2: ConsoleService类成员agent是MasterAgent类的一个实例
+            b.2.3: MasterAgent类的listen方法用于启动mqtt服务端，并监听mqtt客户端发射的消息
+            注：事件由mqtt链接发射到mqtt服务端->mqtt服务端将消息抛出到MasterAgent实例
         b.3: 执行lifecycleCbs对象的beforeStartup方法（如有， 每个服务都可以在{projectRoot}/app/servers/{type}/lifecycle.js配置）
         b.4: 按顺序执行b.2中添加的组件的start方法
             //以master组件为例说明start方法
-            b.4.1: 注册默认的模块（pomelo/lib/modules/masterwatcher,pomelo/lib/modules/console,pomelo-admin/lib/modules/watchServer），即：将这些模块的工厂方法挂载到APP的__modules__属性上
-            b.4.2: 加载模块，即：依次执行APP.__modules__工厂方法，并将返回实例依次追加到Master方法的modules数组属性中
+            b.4.1: 注册默认的模块（pomelo/lib/modules/masterwatcher,pomelo/lib/modules/console,pomelo-admin/lib/modules/watchServer），即：将这些模块导出到APP的__modules__属性上（{moduleId:'模块名', module:'模块导出的函数', opts:'注册时传入的参数'}）
+            b.4.2: 加载模块，即：遍历APP.__modules__所有属性，并执行module方法，并将返回实例注册到consoleService对象同时将实例追加到Master实例的modules数组属性中
+            b.4.3: 调用Master实例masterConsole属性的start方法
+                b.4.3.1: ConsoleService实例调用其agent（MasterAgent类）成员的listen方法
+                b.4.3.2: 将agent监听到事件发射到ConsoleService实例
+                b.4.3.3: 将consoleService成员modules中的所有模块enable设置true （如果是定时模块则加入注册到定时任务中）
 
 
         b.5: 按顺序执行b.2中添加的对象的afterStart方法
         b.6: 执行lifecycle对象的afterStartup方法
-        b.7: 发射start_server事件（monitor中监听该事件）
+        b.7: app实例发射start_server事件（monitor中监听该事件）
 ```
+
+
+| 系统    | 账号 |     权限 |
+| :------ | :-- | :------- |
+| 统计后台  |  18501252389  | 所有包、联运统计数据查看权限 |
+|CRM      | 蔡旭欣    | 查看所有包运营数据|
+| 贵州麻将 |  983547  | 运营数据查看权限 |
+| 诚誉天下 |  chengyu_beian  | 备案 |
+|乐玩     | jxlw_beian|备案|
+|中胜元鑫  | zsyxbeian |备案|
+|阿里云    | 嘉兴瑞锦   |备案|
+|南方龙    | 1416276758@qq.com |备案|
+|增值企业安全防护管理系统|administrator@lewangame.net|
