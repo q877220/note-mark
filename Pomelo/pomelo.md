@@ -132,7 +132,7 @@ var setupEnv = function(app, args) {
     c. 上步中进程通过env,type从配置文件({projectRoot}/config/servers)中找到指定服务参数，并以child_porcess的spawn方法启动子进程，如下：
         node /root/mjserver/game-server/app.js env=localhost restart-force=false auto-restart=false id=matcher0000 host=127.0.0.1 port=5050 serverType=matcher
 ```
-4. master服务启动过程：
+4. master[服务启动过程](https://github.com/NetEase/pomelo/wiki/Framework-Execution-Flow)：
 ```
     a. 通过pomelo命令行启动，如：
         pomelo start -e localhost -t master //node执行pomelo脚本

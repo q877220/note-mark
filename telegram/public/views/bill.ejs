@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport" />
+    <style>
+        .layui-table {
+            width: 100%;
+            background-color: #fff;
+            color: #666;
+            margin: 10px;
+        }
+
+        body {
+            line-height: 24px;
+            font: 14px Helvetica Neue, Helvetica, PingFang SC, Tahoma, Arial, sans-serif;
+        }
+
+        .layui-row {
+            font: 14px Helvetica Neue, Helvetica, PingFang SC, Tahoma, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+    </style>
+</head>
+
+<body>
+    <div style="margin: 20px;">
+        <%= data.date %>
+            <a href="">显示昨天数据</a>
+            <a href="">下载Excel数据</a>
+    </div>
+    <div class="layui-row">
+        <div>入款(<%= data.inCnt %>)</div>
+        <table id="inList">
+            <th>标记</th>
+            <th>时间</th>
+            <th>金额</th>
+            <th>操作人</th>
+            <% for(let i=0; i < inList.length; i++){ %>
+                <tr>
+                    <td>
+                        <%= inList[i].name %>
+                    </td>
+                    <td>
+                        <%= inList[i].time %>
+                    </td>
+                    <td>
+                        <%= inList[i].valuse %>
+                    </td>
+                    <td>
+                        <%= inList[i].op %>
+                    </td>
+                </tr>
+                <% } %>
+        </table>
+
+        <div>入款分类</div>
+        <table id="inSummary">
+            <%> for(let i = 0;i < inSummary.length; i++){ %>
+                    <tr>
+                        <td>
+                            <%= inSummary[i].name %>
+                        </td>
+                        <td>
+                            <%= inSummary[i].valuse %>
+                        </td>
+                    </tr>
+                    <% } %>
+        </table>
+
+        <div>下发(<%= data.outCnt %>)</div>
+        <table id="outList">
+            <th>标记</th>
+            <th>时间</th>
+            <th>金额</th>
+            <th>操作人</th>
+            <% for(let i=0; i < outList.length; i++){ %>
+                <tr>
+                    <td>
+                        <%= outList[i].name %>
+                    </td>
+                    <td>
+                        <%= outList[i].time %>
+                    </td>
+                    <td>
+                        <%= outList[i].valuse %>
+                    </td>
+                    <td>
+                        <%= outList[i].op %>
+                    </td>
+                </tr>
+                <% } %>
+        </table>
+        <div>下发分类</div>
+        <table id="outSummary">
+            <%> for(let i = 0;i < outSummary.length; i++){ %>
+                    <tr>
+                        <td>
+                            <%= outSummary[i].name %>
+                        </td>
+                        <td>
+                            <%= outSummary[i].valuse %>
+                        </td>
+                    </tr>
+                    <% } %>
+        </table>
+        <br>
+        <table>
+            <tr>
+                <td>总入款</td>
+                <td>
+                    <%= data.total %>
+                </td>
+            </tr>
+            <tr>
+                <td>费率</td>
+                <td>
+                    <%= data.rate %>
+                </td>
+            </tr>
+            <tr>
+                <td>USD汇率</td>
+                <td>
+                    <%= data.exchRate %>
+                </td>
+            </tr>
+            <tr>
+                <td>应下发</td>
+                <td>
+                    <%= parseFloat((data.inTotal * (1 - data.rate / 100)).toFixed(2)) %>
+                </td>
+            </tr>
+            <tr>
+                <td>已下发</td>
+                <td>
+                    <%= data.outTotal %>
+                </td>
+            </tr>
+            <tr>
+                <td>未下发</td>
+                <td>
+                    <%= data.inTotal - data.outTotal %>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <script>
+
+    </script>
+</body>
+
+</html>
