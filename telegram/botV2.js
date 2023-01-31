@@ -1,8 +1,19 @@
 const TelegramBot = require('node-telegram-bot-api');
 const _ = require('lodash');
-const moment = require('moment/moment');
+const moment = require('moment');
+const service = require('./utils');
 
 const token = '5933218654:AAEBsQGf3vzBkGWsfk2ZQ2zBreyBvGPIqyw';
+
+const config = {
+    okx: {
+        url: `https://www.channelbuy.com/v3/c2c/tradingOrders/books`
+    },
+    mifeng: {
+        url: `https://data.mifengcha.com/api/v3/exchange_rate`,
+        token: `3XC68SPQU1MP8GURNV5HIJV8QE0LSZPQTQ7E6JMX`
+    }
+}
 
 /**
  * 1. 向系统申请机器人（@BotFather）
@@ -12,7 +23,7 @@ const token = '5933218654:AAEBsQGf3vzBkGWsfk2ZQ2zBreyBvGPIqyw';
 //指令集
 let cmdReg = new Map();
 cmdReg.set('开始', new RegExp(/^开始$/));
-cmdReg.set('清理今日账单', new RegExp(/^清理今日数据$/));
+cmdReg.set('清理今日账单', new RegExp(/^清理今日账单$/));
 cmdReg.set('显示账单', new RegExp(/^显示账单$/));
 
 cmdReg.set('下发', new RegExp(/下发\s*\d+(u|U)?$/));
@@ -23,9 +34,22 @@ cmdReg.set('-', new RegExp(/.*-[1-9]\d{0,}(u|U)?$/));
 cmdReg.set('设置操作员', new RegExp(/^设置操作员.+/));
 cmdReg.set('删除操作员', new RegExp(/^删除操作员.+/));
 
-const NAME_SIZE = 6;
-const LIST_SIZE = 5;
+// cmdReg.set('r0', new RegExp(/^r0$/));
+cmdReg.set('lk', new RegExp(/^lk$/));
+cmdReg.set('lz', new RegExp(/^lz$/));
+cmdReg.set('lw', new RegExp(/^lw$/));
+cmdReg.set('z', new RegExp(/^z\s*\d+$/));
+cmdReg.set('w', new RegExp(/^w\s*\d+$/));
+cmdReg.set('k', new RegExp(/^k\s*\d+$/));
 
+//入账、下发用户名长度
+const NAME_SIZE = 6;
+//账单显示记录条数
+const LIST_SIZE = 5;
+//欧意购买价格表长度
+const SELL_SIZE = 10;
+const PAY_METHOD = { lk: 'bank', lz: 'aliPay', lw: 'wxPay', k: 'bank', z: 'aliPay', w: 'wxPay' };
+const PAY_NAME = { k: '银行卡', z: '支付宝', w: '微信' };
 
 /**
  * 1. 开始及其它合法命令发送前必须先设置费率；
@@ -65,6 +89,11 @@ class ChatSession {
         this.inAccount = [];
         this.outAccount = [];
         this.operators = new Map(); //key: 用户名, value: 对象({level:1(管理员)|2(操作员), utime:timestamp})
+        this.billCycle = 48;
+        this.addOperators(['tinycalf'], 1);
+        setInterval(() => {
+            this.empty(this.billCycle * 60 * 60);
+        }, this.billCycle * 60 * 60 * 1000);
     }
 
     isAdministrator (name) {
@@ -97,27 +126,50 @@ class ChatSession {
             if (this.operators.has(item)) {
                 msg += `${item} 已加过，`;
             } else {
-                this.operators.set(item, { level, utime: moment().unix() });
+                this.operators.set(item, { level, utime: moment().valueOf() });
                 cnt++;
             }
         });
         this.bot.sendMessage(this.id, `${msg}共增加${cnt}位操作员`);
     }
 
-    empty () {
-        this.inCnt = 0;
-        this.outCnt = 0;
-        this.inTotal = 0;
-        this.outTotal = 0;
-        this.inAccount = [];
-        this.outAccount = [];
+    //清空多少秒前的数据
+    empty (seconds) {
+        if (0 === seconds) {
+            this.inCnt = 0;
+            this.outCnt = 0;
+            this.inTotal = 0;
+            this.outTotal = 0;
+            this.inAccount = [];
+            this.outAccount = [];
+        } else {
+            const time = moment().valueOf() - seconds * 1000;
+            let idx = this.inAccount.lastIndexOf(item => {
+                item.time <= time;
+            });
+            let inDel = this.inAccount.splice(0, idx);
+            inDel.forEach(item => {
+                this.inCnt--;
+                this.inTotal -= !!item.unit ? item.value * this.exchRate : item.value;
+            });
+
+            idx = this.outAccount.lastIndexOf(item => {
+                item.time <= time;
+            });
+            let outDel = this.outAccount.splice(0, idx);
+            outDel.forEach(item => {
+                this.outCnt--;
+                this.outTotal -= !!item.unit ? item.value * this.exchRate : item.value;
+            });
+        }
+
         this.summary();
     }
 
     distribute (from, text, unit) {
         let { name, num } = text;
         let data = {
-            name: name || ' ', time: moment().unix(), value: parseFloat(num) || 0, unit, op: `${from.first_name} ${from.last_name ? this.from.last_name : ''}`
+            name: name || ' ', time: moment().valueOf(), value: parseFloat(num) || 0, unit, op: `${from.username}` || `${from.first_name} ${from.last_name}`
         };
 
         this.outCnt++;
@@ -137,7 +189,7 @@ class ChatSession {
         }
 
         let data = {
-            name: name || ' ', time: moment().unix(), value: num, unit, op: `${from.first_name} ${from.last_name ? this.from.last_name : ''}`
+            name: name || ' ', time: moment().valueOf(), value: num, unit, op: `${from.username}` || `${from.first_name} ${from.last_name}`
         };
         this.inCnt++;
         if ('-' === type) {
@@ -181,12 +233,16 @@ class ChatSession {
         let inTail5 = this.inAccount.slice(-1 * LIST_SIZE);
         let inDetail = inTail5.map(item => {
 
-            return `<code>${this.strFormat(item.name)}</code> <code>${moment(item.time * 1000).format('HH:mm:ss')}</code>  ${this.numFormat(item.value)}`;
+            let tmp = `<code>${this.strFormat(item.name)}</code> <code>${moment(item.time).format('HH:mm:ss')}</code>  ${this.numFormat(item.value)}`;
+            if (item.unit) {
+                tmp = `${tmp}${item.unit} (${item.value * this.exchRate})`;
+            }
+            return tmp;
         });
 
         let outTail5 = this.outAccount.slice(-1 * LIST_SIZE);
         let outDetail = outTail5.map(item => {
-            let tmp = `<code>${this.strFormat(item.name)}</code> <code>${moment(item.time * 1000).format('HH:mm:ss')}</code>  ${this.numFormat(item.value)}`;
+            let tmp = `<code>${this.strFormat(item.name)}</code> <code>${moment(item.time).format('HH:mm:ss')}</code>  ${this.numFormat(item.value)}`;
             if (item.unit) {
                 tmp = `${tmp}${item.unit} (${item.value * this.exchRate})`;
             }
@@ -208,7 +264,7 @@ class ChatSession {
             summaryMsg = `${label}  ${this.numFormat(obj[key])}\n`;
         }
 
-        let inCutFeeSum = _.round(this.inTotal * (1 - this.rate / 100));
+        let inCutFeeSum = _.round(this.inTotal * (1 - this.rate / 100), 2);
 
         //         msg = `<b>入款(${this.inCnt}笔):</b>\n ${inDetail.join('\n')}\n
         // <b>下发(${this.outCnt}笔):</b>\n ${outDetail.join('\n')}\n
@@ -231,13 +287,13 @@ class ChatSession {
         msg = `${msg}<b>未下发:</b>  ${this.numFormat(_.round(inCutFeeSum - this.outTotal, 2))} ${this.exchRate <= 0 ? '' : `| ${this.numFormat(_.round((inCutFeeSum - this.outTotal) / this.exchRate, 2))} USDT`}`;
 
         let opt = { parse_mode: 'HTML' };
-        if (this.inCnt > LIST_SIZE) {
+        if (this.inCnt >= LIST_SIZE) {
             let inlineKeyboardMarkup = {};
             inlineKeyboardMarkup.inline_keyboard = [];
             let keyboardRow = [];
             const keyboardButton = {
                 text: `点击跳转完整账单`,
-                url: `http://www.baidu.com`
+                url: `http://119.28.7.237:3001/getBill?c=${this.id}`
             };
             keyboardRow.push(keyboardButton);
             inlineKeyboardMarkup.inline_keyboard.push(keyboardRow);
@@ -253,6 +309,14 @@ class Chat {
         this.bot = new TelegramBot(token, { polling: true });
         this.session = new Map();
         this.listenEvent();
+    }
+
+    getChatSession (chat_id) {
+        let record = null;
+        if (this.session.has(chat_id)) {
+            record = this.session.get(chat_id);
+        }
+        return record;
     }
 
     listenEvent () {
@@ -278,7 +342,7 @@ class Chat {
                 }
                 let name = msg.from.username || msg.from.first_name;
 
-                if (['开始', '设置费率', '设置汇率', '设置操作员', '删除操作员'].includes(key)) {
+                if (['开始', '设置费率', '设置汇率', '设置操作员', '删除操作员', '清理今日账单'].includes(key)) {
                     if (!record.isAdministrator(name)) {
                         record.sendMessage(`您不是当前权限人哦！请联系管理员。`)
                         return;
@@ -360,6 +424,59 @@ class Chat {
                         let members2 = ctx2.split(' ').filter(item => { return !!item; });
                         record.removeOperators(members2);
                         return;
+                    case 'r0':
+                        let r = await service({
+                            url: config.mifeng.url,
+                            headers: { 'X-API-KEY': config.mifeng.token }
+                        })
+                        if (r) {
+                            let realTimeRate = r.find(val => {
+                                return val.c === 'CNY';
+                            });
+                            if (realTimeRate) {
+                                record.sendMessage(`当前USD兑人民币汇率为[${realTimeRate.r}]！`);
+                            }
+                        }
+                        return;
+                    case 'lk':
+                    case 'lz':
+                    case 'lw':
+                    case 'k':
+                    case 'z':
+                    case 'w':
+                        let list = await service({
+                            url: config.okx.url,
+                            params: {
+                                t: moment().valueOf(),
+                                quoteCurrency: 'cny',
+                                baseCurrency: 'usdt',
+                                side: 'sell',
+                                paymentMethod: PAY_METHOD[key],
+                                userType: 'all',
+                                receivingAds: 'false'
+                            },
+                            headers: {
+                                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:108.0) Gecko/20100101 Firefox/108.0",
+                            }
+                        });
+
+                        if (list && list.data) {
+                            let min = Infinity;
+                            let msg = `当前欧易-${PAY_NAME[key]}USDT购买价`;
+                            for (let i = 0; i < list.data.sell.length && i < SELL_SIZE; i++) {
+                                min = _.min([parseFloat(list.data.sell[i].price), min]);
+                                msg = `${msg}\n买${i + 1}：${list.data.sell[i].price}`;
+                            }
+                            if (['k', 'z', 'w'].includes(key)) {
+                                let ctx2 = txt.replace(new RegExp(`${key}`), '');
+                                msg = `${msg}\n\n币数: ${_.trim(ctx2)} / ${min} = ${_.round(parseFloat(ctx2) / min, 2)} USDT`
+                            } else {
+                                msg = `${msg}\n\n命令:\nlk： 列出银行卡价格\nlz： 列出支付宝价格\nlw： 列出微信价格\n`;
+                            }
+
+                            record.sendMessage(msg);
+                        }
+                        return;
                 }
             }
         });
@@ -390,6 +507,8 @@ class Chat {
             console.error(error);
         })
     }
+
+
 }
 
 module.exports = Chat;
