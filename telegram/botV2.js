@@ -29,8 +29,8 @@ cmdReg.set('显示账单', new RegExp(/^显示账单$/));
 cmdReg.set('下发', new RegExp(/下发\s*\d+(u|U)$/));
 cmdReg.set('设置费率', new RegExp(/^设置费率\s*\d+(\.\d+)?%$/));
 cmdReg.set('设置汇率', new RegExp(/^设置汇率\s*\d+(\.\d+)?$/));
-cmdReg.set('+', new RegExp(/.*\+\d+(\.\d+)?\s?\/\s?\d+(\.\d+)?$/));
-cmdReg.set('-', new RegExp(/.*\+\d+(\.\d+)?\s?\/\s?\d+(\.\d+)?$/));
+cmdReg.set('+', [new RegExp(/.*\+\d+(\.\d+)?\s?\/\s?\d+(\.\d+)?$/), new RegExp(/.*\+[1-9]\d{0,}$/)]);
+cmdReg.set('-', [new RegExp(/.*\-\d+(\.\d+)?\s?\/\s?\d+(\.\d+)?$/), new RegExp(/.*\-[1-9]\d{0,}$/)]);
 cmdReg.set('设置操作员', new RegExp(/^设置操作员.+/));
 cmdReg.set('删除操作员', new RegExp(/^删除操作员.+/));
 
@@ -190,11 +190,11 @@ class ChatSession {
         name = _.trim(name);
         let [num, r] = expression.split('/');
         let value = parseFloat(num);
-        r = parseFloat(r);
-        if (0 === r) {
-            this.bot.sendMessage(msg.chat.id, `汇率值不能为0`);
+        if (!r && 0 === this.exchRate) {
+            this.bot.sendMessage(this.id, `当前未设置美元汇率\n请使用命令：设置汇率X.XX`);
             return;
         }
+        r = parseFloat(r) || this.exchRate;
 
         let data = {
             name: name || ' ', time: moment().valueOf(), value, exr: r, op: `${from.username}` || `${from.first_name} ${from.last_name}`
@@ -208,16 +208,16 @@ class ChatSession {
         this.inEXRTotal += data.value / data.exr;
         this.inTotal += data.value;
         this.inAccount.push(data);
+
+        this.summary();
     }
 
     checkin (from, text) {
         this.parseAccount('+', from, text);
-        this.summary();
     }
 
     checkout (from, text) {
         this.parseAccount('-', from, text);
-        this.summary();
     }
 
     strFormat (text, size = NAME_SIZE) {
@@ -340,7 +340,12 @@ class Chat {
             let txt = _.trim(msg.text);
 
             for (let [key, reg] of cmdReg) {
-                if (!txt.match(reg)) {
+
+                if (_.isArray(reg)) {
+                    if (!(['+', '-'].includes(key) && (txt.match(reg[0]) || txt.match(reg[1])))) {
+                        continue;
+                    }
+                } else if (!txt.match(reg)) {
                     continue;
                 }
                 let name = msg.from.username || msg.from.first_name;
