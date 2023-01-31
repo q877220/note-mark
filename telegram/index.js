@@ -63,7 +63,8 @@ app.use(function (err, req, res, next) {
             console.log(`Server listened on 3001`);
         });
 
-        const token = '5933218654:AAEBsQGf3vzBkGWsfk2ZQ2zBreyBvGPIqyw';
+        // const token = '5933218654:AAEBsQGf3vzBkGWsfk2ZQ2zBreyBvGPIqyw'; //Fsgubl07bot 聪明1号
+        const token = '6046551964:AAHG4LupNUV0EItFdljFSnUpZ_C2qoD0A4s'; //@buGm107bot  聪明2号
         let session = new Chat(token);
         app.set('robot', session.bot);
         app.set('robotSession', session);
@@ -89,30 +90,31 @@ function billData (record) {
         inSummary: [],
         outList: [],
         outSummary: [],
-        inTotal: record.inTotal,
+        inTotal: record.numFormat(record.inTotal),
         rate: record.rate,
         exchRate: record.exchRate ? parseFloat(record.exchRate).toFixed(2) : 0,
-        distribeTotal: _.round(record.inTotal * (1 - record.rate / 100), 2),
-        hasDistribe: `${_.round(record.outTotal, 2)}`,
-        unDistribe: `${_.round(record.inTotal * (1 - record.rate / 100) - record.outTotal, 2)}`
+        distribeTotal: `${record.numFormat(_.round(record.inEXRTotal * (1 - record.rate / 100), 2))} USDT`,
+        hasDistribe: `${record.numFormat(_.round(record.outEXRTotal, 2))} USDT`,
+        unDistribe: `${record.numFormat(_.round(record.inEXRTotal * (1 - record.rate / 100) - record.outEXRTotal, 2))} USDT`
     };
 
     let obj = {};
     record.inAccount.forEach(item => {
-        data.inList.push({ name: item.name, value: item.value, op: item.op, time: moment(item.time).format('YYYY-MM-DD HH:mm:ss') })
+        data.inList.push({ name: item.name, value: `${item.value} ÷ ${item.exr} = ${_.round(item.value / item.exr, 2)}`, op: item.op, time: moment(item.time).format('YYYY-MM-DD HH:mm:ss') })
         if (obj[item.name]) {
-            obj[item.name] += item.value;
+            obj[item.name]['exrVal'] += item.value / item.exr;
+            obj[item.name]['value'] += item.value;
         } else {
-            obj[item.name] = item.value;
+            obj[item.name] = { exrVal: item.value / item.exr, value: item.value };
         }
     });
     for (let key in obj) {
-        data.inSummary.push({ name: key, value: record.numFormat(obj[key]) })
+        data.inSummary.push({ name: key, value: `${record.numFormat(obj[key].value)} | ${record.numFormat(_.round(obj[key].exrVal, 2))}` });
     }
 
     obj = {};
     record.outAccount.forEach(item => {
-        data.outList.push({ name: item.name, value: item.value, op: item.op, time: moment(item.time).format('YYYY-MM-DD HH:mm:ss') })
+        data.outList.push({ name: item.name, value: `${record.numFormat(item.value)}u`, op: item.op, time: moment(item.time).format('YYYY-MM-DD HH:mm:ss') })
         if (obj[item.name]) {
             obj[item.name] += item.value;
         } else {
@@ -120,14 +122,7 @@ function billData (record) {
         }
     });
     for (let key in obj) {
-        data.outSummary.push({ name: key, value: record.numFormat(obj[key]) })
-    }
-
-    if (record.exchRate) {
-        data.exchRate = parseFloat(data.exchRate).toFixed(2);
-        data.distribeTotal = `${data.distribeTotal}|${_.round(data.distribeTotal / record.exchRate, 2)} USDT`;
-        data.hasDistribe = `${data.hasDistribe}|${_.round(data.hasDistribe / record.exchRate, 2)} USDT`;
-        data.unDistribe = `${data.unDistribe}|${_.round(data.unDistribe / record.exchRate, 2)} USDT`;
+        data.outSummary.push({ name: key, value: `${record.numFormat(obj[key])}u` });
     }
 
     return data;

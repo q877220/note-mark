@@ -26,11 +26,11 @@ cmdReg.set('开始', new RegExp(/^开始$/));
 cmdReg.set('清理今日账单', new RegExp(/^清理今日账单$/));
 cmdReg.set('显示账单', new RegExp(/^显示账单$/));
 
-cmdReg.set('下发', new RegExp(/下发\s*\d+(u|U)?$/));
+cmdReg.set('下发', new RegExp(/下发\s*\d+(u|U)$/));
 cmdReg.set('设置费率', new RegExp(/^设置费率\s*\d+(\.\d+)?%$/));
 cmdReg.set('设置汇率', new RegExp(/^设置汇率\s*\d+(\.\d+)?$/));
-cmdReg.set('+', new RegExp(/.*\+[1-9]\d{0,}(u|U)?$/));
-cmdReg.set('-', new RegExp(/.*-[1-9]\d{0,}(u|U)?$/));
+cmdReg.set('+', new RegExp(/.*\+\d+(\.\d+)?\s?\/\s?\d+(\.\d+)?$/));
+cmdReg.set('-', new RegExp(/.*\+\d+(\.\d+)?\s?\/\s?\d+(\.\d+)?$/));
 cmdReg.set('设置操作员', new RegExp(/^设置操作员.+/));
 cmdReg.set('删除操作员', new RegExp(/^删除操作员.+/));
 
@@ -49,7 +49,7 @@ const LIST_SIZE = 5;
 //欧意购买价格表长度
 const SELL_SIZE = 10;
 const PAY_METHOD = { lk: 'bank', lz: 'aliPay', lw: 'wxPay', k: 'bank', z: 'aliPay', w: 'wxPay' };
-const PAY_NAME = { k: '银行卡', z: '支付宝', w: '微信' };
+const PAY_NAME = { lk: '银行卡', lz: '支付宝', lw: '微信', k: '银行卡', z: '支付宝', w: '微信' };
 
 /**
  * 1. 开始及其它合法命令发送前必须先设置费率；
@@ -85,7 +85,9 @@ class ChatSession {
         this.inCnt = 0;
         this.outCnt = 0;
         this.inTotal = 0;
+        this.inEXRTotal = 0;  //通过汇率转换后的总额
         this.outTotal = 0;
+        this.outEXRTotal = 0;  //通过汇率转换后的总额
         this.inAccount = [];
         this.outAccount = [];
         this.operators = new Map(); //key: 用户名, value: 对象({level:1(管理员)|2(操作员), utime:timestamp})
@@ -139,7 +141,9 @@ class ChatSession {
             this.inCnt = 0;
             this.outCnt = 0;
             this.inTotal = 0;
+            this.inEXRTotal = 0;
             this.outTotal = 0;
+            this.outEXRTotal = 0;
             this.inAccount = [];
             this.outAccount = [];
         } else {
@@ -150,7 +154,8 @@ class ChatSession {
             let inDel = this.inAccount.splice(0, idx);
             inDel.forEach(item => {
                 this.inCnt--;
-                this.inTotal -= !!item.unit ? item.value * this.exchRate : item.value;
+                this.inEXRTotal -= item.value / item.exr;
+                this.inTotal -= item.value;
             });
 
             idx = this.outAccount.lastIndexOf(item => {
@@ -159,43 +164,49 @@ class ChatSession {
             let outDel = this.outAccount.splice(0, idx);
             outDel.forEach(item => {
                 this.outCnt--;
-                this.outTotal -= !!item.unit ? item.value * this.exchRate : item.value;
+                this.outEXRTotal -= item.value;
+                this.outTotal -= item.value * this.exchRate;
             });
         }
 
         this.summary();
     }
 
-    distribute (from, text, unit) {
+    distribute (from, text) {
         let { name, num } = text;
         let data = {
-            name: name || ' ', time: moment().valueOf(), value: parseFloat(num) || 0, unit, op: `${from.username}` || `${from.first_name} ${from.last_name}`
+            name: name || ' ', time: moment().valueOf(), value: parseFloat(num) || 0, op: `${from.username}` || `${from.first_name} ${from.last_name}`
         };
 
         this.outCnt++;
-        this.outTotal += !!data.unit ? data.value * this.exchRate : data.value;
+        this.outEXRTotal += data.value;
+        this.outTotal += data.value * this.exchRate;
         this.outAccount.push(data);
         this.summary();
     }
 
     parseAccount (type, from, text) {
-        let [name, num] = text.split(`${type}`);
-        let unit = getUnit(num);
+        let [name, expression] = text.split(`${type}`);
         name = _.trim(name);
-        num = parseFloat(num);
-        if (_.isNaN(num)) {
-            // this.bot.sendMessage(msg.chat.id, `金额无效，请重新输入！`);
+        let [num, r] = expression.split('/');
+        let value = parseFloat(num);
+        r = parseFloat(r);
+        if (0 === r) {
+            this.bot.sendMessage(msg.chat.id, `汇率值不能为0`);
             return;
         }
 
         let data = {
-            name: name || ' ', time: moment().valueOf(), value: num, unit, op: `${from.username}` || `${from.first_name} ${from.last_name}`
+            name: name || ' ', time: moment().valueOf(), value, exr: r, op: `${from.username}` || `${from.first_name} ${from.last_name}`
         };
         this.inCnt++;
+
         if ('-' === type) {
             data.value *= -1;
         }
-        this.inTotal += !!data.unit ? data.value * this.exchRate : data.value;
+
+        this.inEXRTotal += data.value / data.exr;
+        this.inTotal += data.value;
         this.inAccount.push(data);
     }
 
@@ -233,18 +244,18 @@ class ChatSession {
         let inTail5 = this.inAccount.slice(-1 * LIST_SIZE);
         let inDetail = inTail5.map(item => {
 
-            let tmp = `<code>${this.strFormat(item.name)}</code> <code>${moment(item.time).format('HH:mm:ss')}</code>  ${this.numFormat(item.value)}`;
+            let tmp = `<code> ${this.strFormat(item.name)}</code> <code>${moment(item.time).format('HH:mm:ss')}</code>  ${item.value}÷${item.exr}=${_.round(item.value / item.exr, 2)}`;
             if (item.unit) {
-                tmp = `${tmp}${item.unit} (${item.value * this.exchRate})`;
+                tmp = `${tmp}${item.unit}(${item.value * this.exchRate})`;
             }
             return tmp;
         });
 
         let outTail5 = this.outAccount.slice(-1 * LIST_SIZE);
         let outDetail = outTail5.map(item => {
-            let tmp = `<code>${this.strFormat(item.name)}</code> <code>${moment(item.time).format('HH:mm:ss')}</code>  ${this.numFormat(item.value)}`;
+            let tmp = `<code> ${this.strFormat(item.name)}</code> <code>${moment(item.time).format('HH:mm:ss')}</code>  ${this.numFormat(item.value)}u`;
             if (item.unit) {
-                tmp = `${tmp}${item.unit} (${item.value * this.exchRate})`;
+                tmp = `${tmp}${item.unit}(${item.value * this.exchRate})`;
             }
             return tmp;
         });
@@ -258,33 +269,25 @@ class ChatSession {
             }
         });
 
-        let summaryMsg = ``;
+        let summaryMsg = ` `;
         for (let key in obj) {
-            let label = `${summaryMsg}<code>${this.strFormat(`${key}总`)}</code>`;
+            let label = `${summaryMsg}<code> ${this.strFormat(`${key}总入: `)}</code>`;
             summaryMsg = `${label}  ${this.numFormat(obj[key])}\n`;
         }
 
-        let inCutFeeSum = _.round(this.inTotal * (1 - this.rate / 100), 2);
-
-        //         msg = `<b>入款(${this.inCnt}笔):</b>\n ${inDetail.join('\n')}\n
-        // <b>下发(${this.outCnt}笔):</b>\n ${outDetail.join('\n')}\n
-        // <b>入款分类</b>\n  ${summaryMsg}\n <b>总入款:</b> ${this.inTotal}
-        // <b>费率:</b> ${this.rate}%
-        // <b>USD汇率:</b> ${this.exchRate}
-        // <b>应下发:</b>  ${inCutFeeSum} | ${_.round(inCutFeeSum / this.exchRate, 2)} USDT
-        // <b>总下发:</b>  ${outCutFeeSum} | ${_.round(outCutFeeSum / this.exchRate, 2)} USDT
-        // <b>未下发:</b>  ${inCutFeeSum - outCutFeeSum} | ${_.round((inCutFeeSum - outCutFeeSum) / this.exchRate, 2)} USDT`;
+        let inCutFeeSum = _.round(this.inEXRTotal * (1 - this.rate / 100), 2);
 
         msg = `<b>入款(${this.inCnt}笔):</b>\n${inDetail.join('\n')}\n\n`;
+        msg = `${msg}<b>入款分类</b>\n${summaryMsg}\n`;
         msg = `${msg}<b>下发(${this.outCnt}笔):</b>\n ${outDetail.join('\n')}\n\n`;
-        msg = `${msg}<b>入款分类</b>\n  ${summaryMsg}\n<b>总入款:</b> ${this.numFormat(this.inTotal)}\n`;
+        msg = `${msg}<b>总入款:</b> ${this.numFormat(this.inTotal)}\n`;
         msg = `${msg}<b>费率:</b> ${this.rate}%\n`;
         if (this.exchRate > 0) {
             msg = `${msg}<b>USD汇率:</b> ${this.exchRate}\n`;
         }
-        msg = `${msg}<b>应下发:</b>  ${this.numFormat(inCutFeeSum)} ${this.exchRate <= 0 ? '' : `| ${this.numFormat(_.round(inCutFeeSum / this.exchRate, 2))} USDT`}\n`;
-        msg = `${msg}<b>总下发:</b>  ${this.numFormat(_.round(this.outTotal, 2))} ${this.exchRate <= 0 ? '' : `|${this.numFormat(_.round(this.outTotal / this.exchRate, 2))} USDT`}\n`;
-        msg = `${msg}<b>未下发:</b>  ${this.numFormat(_.round(inCutFeeSum - this.outTotal, 2))} ${this.exchRate <= 0 ? '' : `| ${this.numFormat(_.round((inCutFeeSum - this.outTotal) / this.exchRate, 2))} USDT`}`;
+        msg = `${msg}<b>应下发:</b>  ${this.numFormat(inCutFeeSum)} USDT\n`;
+        msg = `${msg}<b>总下发:</b>  ${this.numFormat(_.round(this.outEXRTotal, 2))} USDT\n`;
+        msg = `${msg}<b>未下发:</b>  ${this.numFormat(_.round(inCutFeeSum - this.outEXRTotal, 2))} USDT`;
 
         let opt = { parse_mode: 'HTML' };
         if (this.inCnt >= LIST_SIZE) {
@@ -363,7 +366,7 @@ class Chat {
                         }
                         return;
                     case '清理今日账单':
-                        record.empty();
+                        record.empty(0);
                         return;
                     case '显示账单':
                         record.summary();
@@ -399,7 +402,7 @@ class Chat {
                         return;
                     case '下发':
                         let [name, num, tmp] = txt.split(`${key}`);
-                        //如果tmp有值则说明用户输入广西中有多个指令，此种情况不处理
+                        //如果tmp有值则说明用户输入中有多个指令，此种情况不处理
                         if (tmp) {
                             return;
                         }
@@ -409,7 +412,7 @@ class Chat {
                         if (record.exchRate <= 0 && !!unit) {
                             record.sendMessage(`当前未设置美元汇率\n请使用命令：设置汇率X.XX`);
                         } else {
-                            record.distribute(msg.from, { name, num }, unit);
+                            record.distribute(msg.from, { name, num });
                         }
                         return;
                     case '设置操作员':
