@@ -15,9 +15,12 @@
 <body style="margin: 20px;">
     <div style="margin: 20px;">
         <%- data.date %>
-        <span style="color: #fd0606">显示最近48小时内的数据</span>
-            <!-- <a href="">显示昨天数据</a>
-            <a href="">下载Excel数据</a> -->
+            <% if (data.flag){ %>
+                <a href="getBill?c=<%- data.id %>" style="margin-left: 20px; color: blue;"> 显示今天数据</a>
+                <% } else{ %>
+                    <a href="getBill?c=<%- data.id %>&d=y" style="margin-left: 20px; color: blue;"> 显示昨天数据</a>
+                    <% } %>
+                        <!-- <a href="">下载Excel数据</a> -->
     </div>
     <div class="layui-row">
         <div class="layui-col-xs12 layui-col-md4">
