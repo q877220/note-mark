@@ -28,8 +28,8 @@ cmdReg.set('显示账单', new RegExp(/^显示账单$/));
 cmdReg.set('下发', new RegExp(/下发\s*\d+(u|U)?$/));
 cmdReg.set('设置费率', new RegExp(/^设置费率\s*\d+(\.\d+)?%$/));
 cmdReg.set('设置汇率', new RegExp(/^设置汇率\s*\d+(\.\d+)?$/));
-cmdReg.set('+', [new RegExp(/.*\+\d+(\.\d+)?\s?\/\s?\d+(\.\d+)?$/), new RegExp(/.*\+[1-9]\d{0,}$/)]);
-cmdReg.set('-', [new RegExp(/.*\-\d+(\.\d+)?\s?\/\s?\d+(\.\d+)?$/), new RegExp(/.*\-[1-9]\d{0,}$/)]);
+cmdReg.set('+', [new RegExp(/.*\+\d+(\.\d+)?\s?\/\s?\d+(\.\d+)?$/), new RegExp(/.*\+\d{1,}$/)]);
+cmdReg.set('-', [new RegExp(/.*\-\d+(\.\d+)?\s?\/\s?\d+(\.\d+)?$/), new RegExp(/.*\-\d{1,}$/)]);
 cmdReg.set('设置操作员', new RegExp(/^设置操作[员|人].+/));
 cmdReg.set('删除操作员', new RegExp(/^删除操作[员|人].+/));
 cmdReg.set('显示操作员', new RegExp(/^显示操作[员|人]$/));
@@ -213,7 +213,7 @@ class ChatSession {
         return members;
     }
 
-    removeOperators (members) {
+    removeOperators (members, verbose = true) {
         let cnt = 0;
         members.forEach(item => {
             if (this.operators.delete(item)) {
@@ -232,7 +232,7 @@ class ChatSession {
     }
 
     isOperator (name) {
-        return !!this.operators.has(name) || !!this.operators.has(`@${name}`);
+        return !!this.operators.has(name);
     }
 
     addOperators (members, opts) {
@@ -278,8 +278,8 @@ class ChatSession {
             this.inAccount = [];
             this.outAccount = [];
         } else {
-            let idx = this.inAccount.lastIndexOf(item => {
-                item.time <= time;
+            let idx = _.findIndex(this.inAccount, item => {
+                return item.time > time;
             });
             let inDel = this.inAccount.splice(0, idx);
             inDel.forEach(item => {
@@ -288,8 +288,8 @@ class ChatSession {
                 this.inTotal -= item.value;
             });
 
-            idx = this.outAccount.lastIndexOf(item => {
-                item.time <= time;
+            idx = _.findIndex(this.outAccount, item => {
+                return item.time > time;
             });
             let outDel = this.outAccount.splice(0, idx);
             outDel.forEach(item => {
@@ -467,10 +467,10 @@ class Chat {
         this.bot = new TelegramBot(token, { polling: true });
         this.name = name;
         this.sessions = new Map();
-        this.administrators = new Map(); //key: 用户名, value: 对象({type:(1付费用户;2试用)expired:到期时间, ctime:创建时间})
+        this.administrators = new Map();
+        this.init();
         this.listenEvent();
         this.listenKeyBoardEvent();
-        this.init();
     }
 
     async init () {
@@ -600,7 +600,7 @@ class Chat {
             console.error(`[${uid} invalid]`);
             return;
         }
-        this.administrators.set(uid, { uid, username, first_name, last_name, role, ctime: moment().valueOf(), expried: moment(expired).valueOf() });
+        this.administrators.set(uid, { uid, username, first_name, last_name, role, ctime: moment().valueOf(), expired: moment(expired).valueOf() });
 
         if (type) {
             db('tb_chat_user')
@@ -673,13 +673,13 @@ class Chat {
             this.bot.sendMessage(msg.chat.id, '--', opts);
         });
 
-        function trialProduct (instance, from) {
+        function trialProduct (instance, msg) {
             let ctx = ``;
-            let user = instance.administrators.get(from.id);
+            let user = instance.administrators.get(msg.from.id);
             if (user) {
-                ctx = `你已有权限啦，结束时间：${moment(user.expried).format('YYYY-MM-DD HH:mm:ss')}`
+                ctx = `你已有权限啦，结束时间：${moment(user.expired).format('YYYY-MM-DD HH:mm:ss')}`
             } else {
-                let { id, username, first_name, last_name } = from;
+                let { id, username, first_name, last_name } = msg.from;
                 let user = { uid: id, username, first_name, last_name, role: 2, expired: moment().add(6, 'h').format('YYYY-MM-DD HH:mm:ss') };
                 instance.addAdministrator(user);
                 ctx = `申请成功！\n`;
@@ -689,23 +689,36 @@ class Chat {
                 ctx = `${ctx}某某某+XXX    入款XXX元\n下发XXX  也可下发XXXu\n显示账单\n设置操作人 @xxxxx    设置群成员，输入@前打个空格，会弹出选择\n\n`;
                 ctx = `${ctx}显示USDT价格\n设置汇率6.5    显示美元，汇率可变，隐藏设置为0\n清理今天数据\n\n`;
                 ctx = `${ctx}5.如果输入错误，可以用 某某某-XXX  或 下发-XXX，来修正其它功能请用正式版\n\n图解：`;
+
+                const photo = `${__dirname}/../public/picture/shiyong_rate.jpg`;
+                instance.bot.sendPhoto(msg.chat.id, photo);
             }
             return ctx;
         }
 
         this.bot.on('callback_query', msg => {
+            let ctx = ``;
             let cmd = msg.data;
             if (cmd === '试用') {
-                this.bot.emit('试用');
-                let ctx = trialProduct(this, msg.from);
+                let ctx = trialProduct(this, msg);
                 this.bot.sendMessage(msg.message.chat.id, ctx);
+            }
+
+            if (cmd.startsWith('横财一笔')) {
+                let money = parseFloat(cmd.replace(/横财一笔/g, ''));
+                money -= _.random(0.1, 0.9);
+                ctx = `订单已创建！请在2小时内\n支付 ${_.round(money, 2)} USDT\n\n`;
+                ctx = `${ctx}trc地址：TJX4m8f3heQjbA7X8AhddLtjVf9VhCJhqB\n\n`;
+                ctx = `${ctx}- 注，请务必按指定金额转账，否则无法自动化延期。\n`;
+                ctx = `${ctx}- 充值成功后，3分钟后再次查看时间。\n`;
+                ctx = `${ctx}- 如充值有问题，请联系 @Xiaokm2022 (10:00-0:00)\n`;
+
+                this.bot.editMessageText(ctx, { chat_id: msg.message.chat.id, message_id: msg.message.message_id });
             }
         })
 
         this.bot.onText(/^试用$/, msg => {
-            let ctx = trialProduct(this, msg.from);
-            const photo = `${__dirname}/../public/picture/shiyong_rate.jpg`;
-            this.bot.sendPhoto(msg.chat.id, photo);
+            let ctx = trialProduct(this, msg);
             this.bot.sendMessage(msg.chat.id, ctx);
         });
 
@@ -713,7 +726,7 @@ class Chat {
             let ctx = ``;
             let user = this.administrators.get(msg.from.id);
             if (user) {
-                ctx = `你已有权限啦，结束时间：${moment(user.expried).format('YYYY-MM-DD HH:mm:ss')}`
+                ctx = `你已有权限啦，结束时间：${moment(user.expired).format('YYYY-MM-DD HH:mm:ss')}`
             } else {
                 ctx = `你还未有权限啦，可以试用或购买`;
             }
@@ -744,7 +757,25 @@ class Chat {
 
         //TODO
         this.bot.onText(/^自助续费$/, msg => {
-            this.bot.sendMessage(msg.chat.id, `请联系管理员@Xiaokm2022`);
+            const PRICE = [55, 100, 240];
+            let opts = { reply_markup: {} };
+            let keyboardRow = [];
+            keyboardRow.push({
+                text: `15天 (${PRICE[0]}U)`,
+                callback_data: `横财一笔 ${PRICE[0]}`
+            });
+            let keyboardRow2 = [];
+            keyboardRow2.push({
+                text: `一个月 (${PRICE[1]}U)`,
+                callback_data: `横财一笔 ${PRICE[1]}`
+            });
+            let keyboardRow3 = [];
+            keyboardRow3.push({
+                text: `三个月 (${PRICE[2]}U)(8折)`,
+                callback_data: `横财一笔 ${PRICE[2]}`
+            });
+            opts.reply_markup.inline_keyboard = [keyboardRow, keyboardRow2, keyboardRow3];
+            this.bot.sendMessage(msg.chat.id, `自助续费暂只支持USDT的trc通道`, opts);
         });
 
         this.bot.onText(/^如何设置权限人$/, msg => {
@@ -776,8 +807,38 @@ class Chat {
             } else {
                 await this.init();
 
-                //如果初始化后依然没有记录则设置超级管理员为创建者
-                if (!this.sessions.has(msg.chat.id)) {
+                if ('private' === msg.chat.type) {
+                    let cs = new ChatSession(this.bot, msg.chat.id);
+                    let { id: uid, username, first_name, last_name } = msg.from;
+                    cs.setOwner({ uid, username, first_name, last_name });
+                    this.sessions.set(msg.chat.id, cs);
+                    db('tb_session_operator')
+                        .insert({ chat_id: msg.chat.id, uid, name: username || `${first_name} ${last_name}`, owner: true, add_by: uid })
+                        .on('query', sql => {
+                            console.log(`Private chat init ==> [${sql}]`);
+                        })
+                        .onConflict(['chat_id', 'name'])
+                        .ignore()
+                        .catch(e => {
+                            console.error(e);
+                        });
+
+                    db('tb_session_info')
+                        .insert({ chat_id: msg.chat.id, uid, type: msg.chat.type, username, first_name, last_name, robot: this.name })
+                        .on('query', sql => {
+                            console.log(sql);
+                        })
+                        .onConflict('chat_id')
+                        .ignore()
+                        .catch(e => {
+                            console.error(e);
+                        });
+                }
+
+                if (this.sessions.has(msg.chat.id)) {
+                    session = this.sessions.get(msg.chat.id);
+                } else {
+                    //如果初始化后依然没有记录则设置超级管理员为创建者
                     let superAdmin = this.getSuperAdmin();
                     let { uid, first_name, last_name, username } = superAdmin;
                     session = new ChatSession(this.bot, msg.chat.id);
@@ -785,7 +846,7 @@ class Chat {
                     this.sessions.set(msg.chat.id, session);
                     try {
                         await db('tb_session_info')
-                            .insert({ chat_id: msg.chat.id, uid, username, first_name, last_name, robot: this.name })
+                            .insert({ chat_id: msg.chat.id, type: msg.chat.type, uid, username, first_name, last_name, robot: this.name })
                             .on('query', sql => {
                                 console.log(sql);
                             })
@@ -808,7 +869,7 @@ class Chat {
                 } else if (!txt.match(reg)) {
                     continue;
                 }
-                let name = msg.from.username ? `@${msg.from.username}` : msg.from.first_name;
+                let name = msg.from.username ? `${msg.from.username}` : msg.from.first_name;
 
                 //判断是否试用机器人会话(拉机器人进群的人是试用权限)
                 isTmpChat = !this.administrators.has(session.getOwner().uid) || this.administrators.get(session.getOwner().uid).role === 2;
@@ -822,7 +883,7 @@ class Chat {
                     auth = this.judgmentAuth(sAdmin.uid, msg.from.id);
                 }
 
-                if (['开始', '设置费率', '设置汇率', '设置操作员', '删除操作员', '清理今日账单', '显示操作员', '结束记录'].includes(key)) {
+                if (['开始', '设置费率', '设置汇率', '设置操作员', '删除操作员', '清理今日账单', '显示账单', '显示操作员', '结束记录'].includes(key)) {
                     switch (auth) {
                         case 1:
                             session.sendMessage(`权限人<${sAdmin.username} ${sAdmin.first_name}>已过期！此群机器人由他首次设置`);
@@ -905,9 +966,9 @@ class Chat {
                     case '设置操作员':
                         let ctx = txt.replace(new RegExp(`${key}`), '');
                         // ctx = ctx.replace(/@/g, '');
-                        let members = ctx.split(' ').filter(item => { return !!item && ('@' === item[0]); });
+                        let members = ctx.split(' ').filter(item => { return !!item && item.startsWith('@') });
                         members = members.map(val => {
-                            return { name: val };
+                            return { name: val.substring(1) };
                         });
                         if (msg.entities) {
                             msg.entities.forEach(item => {
@@ -921,8 +982,10 @@ class Chat {
                     case '删除操作员':
                         let ctx2 = txt.replace(new RegExp(`${key}`), '');
                         // ctx2 = ctx2.replace(/@/g, '');
-                        let members2 = ctx2.split(' ').filter(item => { return !!item; });
-
+                        let members2 = ctx2.split(' ').filter(item => { return !!item && item.startsWith('@') });
+                        members2 = members2.map(val => {
+                            return val.substring(1);
+                        });
                         if (msg.entities) {
                             msg.entities.forEach(item => {
                                 if (item.user) {
@@ -1011,16 +1074,44 @@ class Chat {
         this.bot.on('left_chat_member', async (msg) => {
             if (this.sessions.has(msg.chat.id)) {
                 let user = msg.left_chat_member;
-                this.sessions.get(msg.chat.id).removeOperators([user.username || `${user.first_name} ${user.last_name}`]);
-                let { id: uid, username, first_name, last_name } = msg.left_chat_member;
-                await db('tb_session_operator')
-                    .where(function () {
-                        this.where('name', username || `${first_name} ${last_name}`).orWhere('uid', uid);
-                    }).on('query', sql => {
-                        console.log(sql);
-                    }).delete().catch(e => {
-                        console.error(e);
-                    });
+                try {
+                    let self = await this.bot.getMe();
+                    if (self.username === user.username) {
+                        db('tb_session_info')
+                            .where({ chat_id: msg.chat.id })
+                            .on('query', sql => {
+                                console.log(sql);
+                            })
+                            .delete()
+                            .catch(e => {
+                                console.error(e);
+                            });
+
+                        db('tb_session_operator')
+                            .where({ chat_id: msg.chat.id })
+                            .on('query', sql => {
+                                console.log(sql);
+                            })
+                            .delete()
+                            .catch(e => {
+                                console.error(e);
+                            });
+                    }
+
+                    this.sessions.get(msg.chat.id).removeOperators([user.username || `${user.first_name} ${user.last_name}`], false);
+                    let { id: uid, username, first_name, last_name } = msg.left_chat_member;
+                    await db('tb_session_operator')
+                        .where(function () {
+                            this.where('name', username || `${first_name} ${last_name}`).orWhere('uid', uid);
+                        }).on('query', sql => {
+                            console.log(sql);
+                        }).delete().catch(e => {
+                            console.error(e);
+                        });
+
+                } catch (e) {
+                    console.error(e);
+                }
             }
         });
 
@@ -1061,7 +1152,7 @@ class Chat {
                     });
 
                 db('tb_session_info')
-                    .insert({ chat_id: msg.chat.id, uid, username, first_name, last_name, robot: self.username })
+                    .insert({ chat_id: msg.chat.id, type: msg.chat.type, uid, username, first_name, last_name, robot: self.username })
                     .on('query', sql => {
                         console.log(sql);
                     })
@@ -1089,7 +1180,7 @@ class Chat {
                     session.setOwner({ uid, username, first_name, last_name });
                     this.sessions.set(msg.chat.id, session);
                     db('tb_session_info')
-                        .insert({ chat_id: msg.chat.id, uid, username, first_name, last_name, robot: self.username })
+                        .insert({ chat_id: msg.chat.id, type: msg.chat.type, uid, username, first_name, last_name, robot: self.username })
                         .on('query', sql => {
                             console.log(sql);
                         })

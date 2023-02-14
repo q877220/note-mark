@@ -53,6 +53,7 @@ async function init () {
                     t.float('rate').defaultTo(0),
                     t.float('exchange_rate').defaultTo(0),
                     t.string('robot', 32),
+                    t.string('type', 32),
                     t.timestamps(true, true)
             });
         }
