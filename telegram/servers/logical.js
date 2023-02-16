@@ -1,7 +1,6 @@
 const Chat = require('./botV2');
 const moment = require('moment');
 const _ = require('lodash');
-const botCfg = require('../config/robot.json');
 const ApplicationError = require('../utils/error');
 const { db } = require('../utils/database');
 const CONST_CFG = require('../utils/constants');
@@ -71,7 +70,7 @@ async function getYesterday (session) {
                     if (item.rate === 1) {
                         outObj[item.name]['exrVal'] += item.money / item.rate;
                         outObj[item.name]['value'] += item.money;
-                        d.value = `${session.numFormat(item.value)} | ${session.numFormat(_.round(item.value / session.getExchRate, 2))}u`;
+                        d.value = `${session.numFormat(item.value)} | ${session.numFormat(item.value / session.getExchRate)}u`;
                     } else {
                         outObj[item.name]['exrVal'] += item.money;
                         outObj[item.name]['value'] += item.money * item.rate;
@@ -84,11 +83,11 @@ async function getYesterday (session) {
         });
 
         for (let key in inObj) {
-            data.inSummary.push({ name: key, value: `${session.numFormat(obj[key].value)} | ${session.numFormat(_.round(obj[key].exrVal, 2))}` });
+            data.inSummary.push({ name: key, value: `${session.numFormat(obj[key].value)} | ${session.numFormat(obj[key].exrVal, 2)}` });
         }
 
         for (let key in outObj) {
-            data.outSummary.push({ name: key, value: `${session.numFormat(obj[key].value)} | ${session.numFormat(_.round(obj[key].exrVal, 2))}` });
+            data.outSummary.push({ name: key, value: `${session.numFormat(obj[key].value)} | ${session.numFormat(obj[key].exrVal, 2)}` });
         }
 
         return data;
@@ -113,9 +112,9 @@ function billData (session) {
         inTotal: session.numFormat(session.inTotal),
         rate: session.rate,
         exchRate: session.exchRate ? parseFloat(session.exchRate).toFixed(2) : 0,
-        distribeTotal: `${session.numFormat(_.round(session.inEXRTotal * (1 - session.rate / 100), 2))} USDT`,
-        hasDistribe: `${session.numFormat(_.round(session.outEXRTotal, 2))} USDT`,
-        unDistribe: `${session.numFormat(_.round(session.inEXRTotal * (1 - session.rate / 100) - session.outEXRTotal, 2))} USDT`
+        distribeTotal: `${session.numFormat(session.inEXRTotal * (1 - session.rate / 100))} USDT`,
+        hasDistribe: `${session.numFormat(session.outEXRTotal)} USDT`,
+        unDistribe: `${session.numFormat(session.inEXRTotal * (1 - session.rate / 100) - session.outEXRTotal)} USDT`
     };
 
     let obj = {};
@@ -129,7 +128,7 @@ function billData (session) {
         obj[item.name]['value'] += item.value;
     });
     for (let key in obj) {
-        data.inSummary.push({ name: key, value: `${session.numFormat(obj[key].value)} | ${session.numFormat(_.round(obj[key].exrVal, 2))}u` });
+        data.inSummary.push({ name: key, value: `${session.numFormat(obj[key].value)} | ${session.numFormat(obj[key].exrVal)}u` });
     }
 
     obj = {};
@@ -143,7 +142,7 @@ function billData (session) {
         if (!item.unit) {
             obj[item.name]['exrVal'] += item.value / session.getExchRate();
             obj[item.name]['value'] += item.value;
-            d.value = `${session.numFormat(item.value)} | ${session.numFormat(_.round(item.value / session.getExchRate(), 2))}u`;
+            d.value = `${session.numFormat(item.value)} | ${session.numFormat(item.value / session.getExchRate())}u`;
         } else {
             obj[item.name]['exrVal'] += item.value;
             obj[item.name]['value'] += item.value * item.exr;
@@ -154,13 +153,15 @@ function billData (session) {
     });
 
     for (let key in obj) {
-        data.outSummary.push({ name: key, value: `${session.numFormat(obj[key].value)} | ${session.numFormat(_.round(obj[key].exrVal, 2))}u` });
+        data.outSummary.push({ name: key, value: `${session.numFormat(obj[key].value)} | ${session.numFormat(obj[key].exrVal)}u` });
     }
 
     return data;
 }
 
 function startBot (app, name, type) {
+    delete require.cache[require.resolve('../config/robot.json')];
+    let botCfg = require('../config/robot.json');
     if (botCfg[name] && botCfg[name].type === type) {
         let { token } = botCfg[name];
         let robots = app.get('robot');

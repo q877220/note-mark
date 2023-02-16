@@ -401,9 +401,9 @@ class ChatSession {
         let outDetail = outTail5.map(item => {
             let tmp = ` ${this.strFormat(item.name)} <code>${moment(item.time).format('HH:mm:ss')}</code>  ${this.numFormat(item.value)}`;
             if (item.unit) {
-                tmp = `${tmp}${item.unit}(${this.numFormat(_.round(item.value * this.getExchRate(), 2))})`;
+                tmp = `${tmp}${item.unit}(${this.numFormat(item.value * this.getExchRate())})`;
             } else {
-                tmp = `${tmp} | (${this.numFormat(_.round(item.value / this.getExchRate(), 2))}u)`;
+                tmp = `${tmp} | (${this.numFormat(item.value / this.getExchRate())}u)`;
             }
             return tmp;
         });
@@ -434,8 +434,8 @@ class ChatSession {
             msg = `${msg}<b>USD汇率 :</b>  ${this.getExchRate()}\n`;
         }
         msg = `${msg}<b>应下发 :</b>  ${this.numFormat(inCutFeeSum)} USDT\n`;
-        msg = `${msg}<b>总下发 :</b>  ${this.numFormat(_.round(this.outEXRTotal, 2))} USDT\n`;
-        msg = `${msg}<b>未下发 :</b>  ${this.numFormat(_.round(inCutFeeSum - this.outEXRTotal, 2))} USDT`;
+        msg = `${msg}<b>总下发 :</b>  ${this.numFormat(this.outEXRTotal)} USDT\n`;
+        msg = `${msg}<b>未下发 :</b>  ${this.numFormat(inCutFeeSum - this.outEXRTotal)} USDT`;
 
         let opt = { parse_mode: 'HTML' };
         if (this.inCnt >= CONST_CFG.LIST_SIZE) {
