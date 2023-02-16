@@ -1,15 +1,15 @@
 const Chat = require('./botV2');
 const moment = require('moment');
 const _ = require('lodash');
-const botCfg = require('../config/robot.json');
 const ApplicationError = require('../utils/error');
 const { db } = require('../utils/database');
+const CONST_CFG = require('../utils/constants');
 const WEEK = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
 
 
 async function getYesterday (session) {
-    let end = moment().startOf('day').add(4, 'h'); // 当地时区凌晨4点
-    let start = moment().subtract(1, 'd').startOf('day').add(4, 'h');
+    let end = moment().startOf('day').add(CONST_CFG.ACCOUNT_BEGIN, 'h');
+    let start = moment().subtract(1, 'd').startOf('day').add(CONST_CFG.ACCOUNT_BEGIN, 'h');
     let data = {
         id: session.id,
         flag: true,
@@ -94,7 +94,6 @@ async function getYesterday (session) {
     }
 }
 
-
 function billData (session) {
     let data = {
         id: session.id,
@@ -171,6 +170,8 @@ function billData (session) {
 }
 
 function startBot (app, name, type) {
+    delete require.cache[require.resolve('../config/robot.json')];
+    let botCfg = require('../config/robot.json');
     if (botCfg[name] && botCfg[name].type === type) {
         let { token } = botCfg[name];
         let robots = app.get('robot');
