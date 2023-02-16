@@ -4,12 +4,13 @@ const _ = require('lodash');
 const botCfg = require('../config/robot.json');
 const ApplicationError = require('../utils/error');
 const { db } = require('../utils/database');
+const CONST_CFG = require('../utils/constants');
 const WEEK = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
 
 
 async function getYesterday (session) {
-    let end = moment().startOf('day').add(4, 'h'); // 当地时区凌晨4点
-    let start = moment().subtract(1, 'd').startOf('day').add(4, 'h');
+    let end = moment().startOf('day').add(CONST_CFG.ACCOUNT_BEGIN, 'h');
+    let start = moment().subtract(1, 'd').startOf('day').add(CONST_CFG.ACCOUNT_BEGIN, 'h');
     let data = {
         id: session.id,
         flag: true,
@@ -179,14 +180,16 @@ function findBotByName (app, name) {
     return robots[name] || null;
 }
 
-function findBotByChat (app, chat_id) {
+function findBotSession (app, chat_id) {
+    let session = null;
     let robots = app.get('robot');
     for (let key in robots) {
-        if (robots[key].getChatSession(chat_id)) {
-            return robots[key];
+        session = robots[key].getChatSessionByChat(chat_id);
+        if (session) {
+            return session;
         }
     }
-    return null;
+    return session;
 }
 
 module.exports = {
@@ -194,5 +197,5 @@ module.exports = {
     getYesterday,
     startBot,
     findBotByName,
-    findBotByChat
+    findBotSession
 }

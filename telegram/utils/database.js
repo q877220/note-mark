@@ -65,7 +65,7 @@ async function init () {
                     t.integer('uid'),
                     t.string('name').notNullable(),
                     t.boolean('owner').defaultTo(false),
-                    t.string('add_by').notNullable(),
+                    t.integer('add_by').notNullable(),
                     t.string('robot', 32),
                     t.timestamps(true, true),
                     t.primary(['chat_id', 'name'])
@@ -79,7 +79,7 @@ async function init () {
                     t.string('username', 32),
                     t.string('first_name', 32),
                     t.string('last_name', 32),
-                    t.integer('role').comment('0: super admin; 1: admin; 2: temporary admin; 99:robot'),
+                    t.integer('role').comment('0: super admin(付费用户); 1: admin(授予管理员权限用户); 2: temporary admin(试用用户); 99:robot'),
                     t.string('robot', 32),
                     t.datetime('expired'),
                     t.timestamps(true, true),

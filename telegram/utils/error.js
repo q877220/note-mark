@@ -6,7 +6,7 @@ const error = {
     3000: 'Database error',
     4000: 'Config not found',
     4001: 'Bot not found',
-
+    4002: 'Session not found',
     5000: 'Server inner error'
 }
 class ApplicationError extends Error {
