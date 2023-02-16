@@ -1,0 +1,12 @@
+{
+    "Fsgubl07bot": {
+        "name": "聪明1号(固定汇率)",
+        "type": 0,
+        "token": "5933218654:AAEBsQGf3vzBkGWsfk2ZQ2zBreyBvGPIqyw"
+    },
+    "buGm107bot": {
+        "name": "聪明2号(浮动汇率)",
+        "type": 1,
+        "token": "6046551964:AAHG4LupNUV0EItFdljFSnUpZ_C2qoD0A4s"
+    }
+}

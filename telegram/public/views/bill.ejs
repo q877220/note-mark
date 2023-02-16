@@ -7,17 +7,28 @@
     <link rel="stylesheet" href="/css/layui.css">
     <script src="/javascript/layui.js"></script>
     <script src="/javascript/jquery-1.10.2.min.js"></script>
+    <link rel="icon" href="../picture/icon.jpg" type="image/x-icon"/>
+    <title>显示完整账单</title>
     <style>
-
+        td {
+            padding: 1px 8px;
+        }
+        .layui-table td,
+        .layui-table th {
+            padding: 5px;
+        }
     </style>
 </head>
 
 <body style="margin: 20px;">
     <div style="margin: 20px;">
         <%- data.date %>
-        <span style="color: #fd0606">显示最近48小时内的数据</span>
-            <!-- <a href="">显示昨天数据</a>
-            <a href="">下载Excel数据</a> -->
+            <% if (data.flag){ %>
+                <a href="getBill?c=<%- data.id %>" style="margin-left: 20px; color: blue;"> 显示今天数据</a>
+                <% } else{ %>
+                    <a href="getBill?c=<%- data.id %>&d=y" style="margin-left: 20px; color: blue;"> 显示昨天数据</a>
+                    <% } %>
+                        <!-- <a href="">下载Excel数据</a> -->
     </div>
     <div class="layui-row">
         <div class="layui-col-xs12 layui-col-md4">

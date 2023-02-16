@@ -1,13 +1,12 @@
 const createError = require('http-errors');
-const moment = require('moment');
 const express = require('express');
+const moment = require('moment');
 const path = require('path');
 const cookieParser = require('cookie-parser');
 const logger = require('morgan');
 const cors = require('cors');
-const _ = require('lodash');
-
-const Chat = require('./botV2');
+const server = require('./servers/logical');
+const ApplicationError = require('./utils/error');
 
 const app = express();
 
@@ -23,23 +22,94 @@ app.use(express.static(path.resolve(__dirname, 'public')));
 app.set('views', path.join(__dirname, 'public', 'views'));
 app.set('view engine', 'ejs');
 
-app.all('/sendMsg', (req, res) => {
-
-    const data = req.body;
-    app.get('robot').emit('text', data);
-    res.json({ errno: 0 })
+app.all('/sendMsg', (req, res, next) => {
+    const { bot, data } = req.body;
+    let robot = server.findBotByName(app, bot);
+    if (robot) {
+        robot.bot.emit('text', data);
+        res.json({ errno: 0 })
+    } else {
+        next(new ApplicationError(4001));
+    }
 });
 
-app.all('/getBill', (req, res) => {
-    const { c } = req.query;
-    let record = app.get('robotSession').getChatSession(parseInt(c));
-
-    if (record) {
-        let data = billData(record);
-        res.render('bill', { data });
-    } else {
-        res.json({ errno: -200 })
+app.post('/startBot', (req, res, next) => {
+    try {
+        const { bot, type } = req.body;
+        server.startBot(app, bot, type)
+        res.json({ errno: 0 });
+    } catch (e) {
+        if (e instanceof ApplicationError) {
+            next(e);
+        } else {
+            next(new ApplicationError(5000, e, { code }));
+        }
     }
+});
+
+app.all('/addAdmin', (req, res, next) => {
+    const { bot, uid, username, first_name, last_name, role, expired } = req.body;
+    let robot = server.findBotByName(app, bot);
+    if (robot) {
+        robot.addAdministrator({ uid, username, first_name, last_name, role, expired: moment(expired).format('YYYY-MM-DD HH:mm:ss') });
+        res.json({ errno: 0 })
+    } else {
+        next(new ApplicationError(4001));
+    }
+});
+
+app.all('/setUserExpired', (req, res, next) => {
+    let { bot, uid, days, hours, expired } = req.body;
+    hours = parseInt(hours);
+    if (!hours || 0 >= hours || !uid) {
+        next(new ApplicationError(1001));
+    }
+    let robot = server.findBotByName(app, bot);
+    let errmsg = ``;
+    if (robot) {
+        let time = 0;
+        if (expired && moment(expired).isValid()) {
+            time = moment(expired).format('YYYY-MM-DD HH:mm:ss');
+            errmsg = robot.setExpired(uid, time, true);
+        } else {
+            if (parseInt(days)) {
+                time += 24 * parseInt(days);
+            }
+            if (parseInt(hours)) {
+                time += parseInt(hours);
+            }
+            errmsg = robot.setExpired(uid, time);
+        }
+
+        res.json({ errno: 0, errmsg });
+    } else {
+        next(new ApplicationError(4001));
+    }
+});
+
+app.all('/getBill', async (req, res, next) => {
+    const { c, d } = req.query;
+    try {
+        let session = server.findBotSession(app, parseInt(c));
+        if (session) {
+            let data = {};
+            if (d === 'y') {
+                data = await server.getYesterday(session);
+            } else {
+                data = server.billData(session);
+            }
+            res.render('bill', { data });
+        } else {
+            throw new ApplicationError(4002);
+        }
+    } catch (e) {
+        if (e instanceof ApplicationError) {
+            next(e);
+        } else {
+            next(new ApplicationError(5000, e, { c, d }));
+        }
+    }
+
 });
 
 app.use(function (req, res, next) {
@@ -48,13 +118,7 @@ app.use(function (req, res, next) {
 
 // error handler
 app.use(function (err, req, res, next) {
-    // set locals, only providing error in development
-    res.locals.message = err.message;
-    res.locals.error = req.app.get('env') === 'development' ? err : {};
-
-    // render the error page
-    res.status(err.status || 500);
-    res.json({ errno: res.status || 500 });
+    res.json({ errno: err.errno || 5000, errmsg: err.message });
 });
 
 (function start () {
@@ -63,72 +127,9 @@ app.use(function (err, req, res, next) {
             console.log(`Server listened on 3001`);
         });
 
-        const token = '5933218654:AAEBsQGf3vzBkGWsfk2ZQ2zBreyBvGPIqyw';
-        let session = new Chat(token);
-        app.set('robot', session.bot);
-        app.set('robotSession', session);
-
+        app.set('robot', {});
     } catch (e) {
         console.error(`Server init error ===> ${JSON.stringify(e)}`);
         process.exit(-1);
     }
 })()
-
-/**
- * 
- * @param {*} record  ChatSession
- */
-function billData (record) {
-    const week = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
-
-    let data = {
-        date: `${moment().format('YYYY-MM-DD')} ${week[moment().format('d')]}`,
-        inCnt: record.inCnt,
-        outCnt: record.outCnt,
-        inList: [],
-        inSummary: [],
-        outList: [],
-        outSummary: [],
-        inTotal: record.inTotal,
-        rate: record.rate,
-        exchRate: record.exchRate ? parseFloat(record.exchRate).toFixed(2) : 0,
-        distribeTotal: _.round(record.inTotal * (1 - record.rate / 100), 2),
-        hasDistribe: `${_.round(record.outTotal, 2)}`,
-        unDistribe: `${_.round(record.inTotal * (1 - record.rate / 100) - record.outTotal, 2)}`
-    };
-
-    let obj = {};
-    record.inAccount.forEach(item => {
-        data.inList.push({ name: item.name, value: item.value, op: item.op, time: moment(item.time).format('YYYY-MM-DD HH:mm:ss') })
-        if (obj[item.name]) {
-            obj[item.name] += item.value;
-        } else {
-            obj[item.name] = item.value;
-        }
-    });
-    for (let key in obj) {
-        data.inSummary.push({ name: key, value: record.numFormat(obj[key]) })
-    }
-
-    obj = {};
-    record.outAccount.forEach(item => {
-        data.outList.push({ name: item.name, value: item.value, op: item.op, time: moment(item.time).format('YYYY-MM-DD HH:mm:ss') })
-        if (obj[item.name]) {
-            obj[item.name] += item.value;
-        } else {
-            obj[item.name] = item.value;
-        }
-    });
-    for (let key in obj) {
-        data.outSummary.push({ name: key, value: record.numFormat(obj[key]) })
-    }
-
-    if (record.exchRate) {
-        data.exchRate = parseFloat(data.exchRate).toFixed(2);
-        data.distribeTotal = `${data.distribeTotal}|${_.round(data.distribeTotal / record.exchRate, 2)} USDT`;
-        data.hasDistribe = `${data.hasDistribe}|${_.round(data.hasDistribe / record.exchRate, 2)} USDT`;
-        data.unDistribe = `${data.unDistribe}|${_.round(data.unDistribe / record.exchRate, 2)} USDT`;
-    }
-
-    return data;
-}
