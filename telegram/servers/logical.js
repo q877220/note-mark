@@ -23,10 +23,12 @@ async function getYesterday (session) {
         inTotal: 0,
         rate: 0,
         exchRate: 0,
-        distribeTotal: 0,
-        hasDistribe: 0,
-        unDistribe: 0
+        distribeTotal: ``,
+        hasDistribe: ``,
+        unDistribe: ``
     };
+    let distribeTotal = 0;
+    let hasDistribe = 0;
     try {
         let info = await db('tb_session_info')
             .where({ chat_id: session.id })
@@ -50,6 +52,8 @@ async function getYesterday (session) {
                 case 1:
                 case 2:
                     data.inCnt++;
+                    data.inTotal += item.money;
+                    distribeTotal += item.money / item.rate;
                     data.inList.push({ name: item.name, value: `${item.money} ÷ ${item.rate} = ${_.round(item.money / item.rate, 2)}`, op: item.operator, time: moment(item.created_at).add(8, 'h').format('YYYY-MM-DD HH:mm:ss') });
                     if (inObj[item.name]) {
                         inObj[item.name]['exrVal'] += item.money / item.rate;
@@ -61,22 +65,27 @@ async function getYesterday (session) {
                     break;
                 case 3:
                     data.outCnt++;
-                    let d = { name: item.name, value: `${session.numFormat(item.value)}u`, op: item.op, time: moment(item.time).format('YYYY-MM-DD HH:mm:ss') };
+                    let d = { name: item.name, value: `${session.numFormat(item.money)}u`, op: item.operator, time: moment(item.time).format('YYYY-MM-DD HH:mm:ss') };
 
                     if (!outObj[item.name]) {
                         outObj[item.name] = { exrVal: 0, value: 0 };
                     }
 
                     if (item.rate === 1) {
+                        hasDistribe += item.money / item.rate;
                         outObj[item.name]['exrVal'] += item.money / item.rate;
                         outObj[item.name]['value'] += item.money;
-                        d.value = `${session.numFormat(item.value)} | ${session.numFormat(item.value / session.getExchRate)}u`;
+                        d.value = `${session.numFormat(item.money)} | ${session.numFormat(item.money / session.getExchRate)}u`;
                     } else {
+                        hasDistribe += item.money;
                         outObj[item.name]['exrVal'] += item.money;
                         outObj[item.name]['value'] += item.money * item.rate;
-                        d.value = `${session.numFormat(item.value)}u`;
+                        d.value = `${session.numFormat(item.money)}u`;
                     }
 
+                    data.distribeTotal = `${session.numFormat(distribeTotal * (1 - session.getRate()))} USDT`;
+                    data.hasDistribe = `${session.numFormat(hasDistribe)} USDT`;
+                    data.unDistribe = `${session.numFormat(distribeTotal * (1 - session.getRate()) - hasDistribe)} USDT`
                     data.outList.push(d);
                     break;
             }
@@ -110,11 +119,11 @@ function billData (session) {
         outList: [],
         outSummary: [],
         inTotal: session.numFormat(session.inTotal),
-        rate: session.rate,
-        exchRate: session.exchRate ? parseFloat(session.exchRate).toFixed(2) : 0,
-        distribeTotal: `${session.numFormat(session.inEXRTotal * (1 - session.rate / 100))} USDT`,
+        rate: session.getRate(),
+        exchRate: session.isSetExchRate() ? parseFloat(session.getExchRate()).toFixed(2) : 0,
+        distribeTotal: `${session.numFormat(session.inEXRTotal * (1 - session.getRate() / 100))} USDT`,
         hasDistribe: `${session.numFormat(session.outEXRTotal)} USDT`,
-        unDistribe: `${session.numFormat(session.inEXRTotal * (1 - session.rate / 100) - session.outEXRTotal)} USDT`
+        unDistribe: `${session.numFormat(session.inEXRTotal * (1 - session.getRate() / 100) - session.outEXRTotal)} USDT`
     };
 
     let obj = {};
