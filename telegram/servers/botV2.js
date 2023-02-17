@@ -29,8 +29,8 @@ cmdReg.set('显示账单', new RegExp(/^显示账单$/));
 cmdReg.set('下发', new RegExp(/下发\s*\d+(u|U)?$/));
 cmdReg.set('设置费率', new RegExp(/^设置费率\s*\d+(\.\d+)?%$/));
 cmdReg.set('设置汇率', new RegExp(/^设置汇率\s*\d+(\.\d+)?$/));
-cmdReg.set('+', [new RegExp(/.*\+\d+(\.\d+)?\s?\/\s?\d+(\.\d+)?$/), new RegExp(/.*\+\d{1,}(\.\d+)?$/)]);
-cmdReg.set('-', [new RegExp(/.*入款\s*-\d+(\.\d+)?\s?\/\s?\d+(\.\d+)?$/), new RegExp(/.*入款\s*-\d{1,}(\.\d+)?$/)]);
+cmdReg.set('+', [new RegExp(/.*[入款]?\s*\+\d+(\.\d+)?\s?\/\s?\d+(\.\d+)?$/), new RegExp(/.*[入款]?\s*\+\d{1,}(\.\d+)?$/)]);
+cmdReg.set('-', [new RegExp(/.*[入款]?\s*-\d+(\.\d+)?\s?\/\s?\d+(\.\d+)?$/), new RegExp(/.*[入款]?\s*-\d{1,}(\.\d+)?$/)]);
 cmdReg.set('设置操作员', new RegExp(/^设置操作[员|人].+/));
 cmdReg.set('删除操作员', new RegExp(/^删除操作[员|人].+/));
 cmdReg.set('显示操作员', new RegExp(/^显示操作[员|人]$/));
@@ -911,14 +911,18 @@ class Chat {
                     auth = this.judgmentAuth(sAdmin.uid, msg.from.id);
                 }
 
-                if (['设置费率', '设置汇率', '设置操作员', '删除操作员', '清理今日账单', '显示账单', '显示操作员', '结束记录'].includes(key)) {
+                if (['开始', '设置费率', '设置汇率', '设置操作员', '删除操作员', '清理今日账单', '显示账单', '显示操作员', '结束记录'].includes(key)) {
                     switch (auth) {
                         case 1:
                             session.sendMessage(`权限人<${sAdmin.username} ${sAdmin.first_name}>已过期！此群机器人由他首次设置`);
                             return;
                         case 2:
-                            session.sendMessage(`您不是权限人哦！此群机器人由<${sAdmin.username} ${sAdmin.first_name}>首次设置。`);
-                            return;
+                            if ('开始' === key && session.isOperator(name)) {
+                                break;
+                            } else {
+                                session.sendMessage(`您不是权限人哦！此群机器人由<${sAdmin.username} ${sAdmin.first_name}>首次设置。`);
+                                return;
+                            }
                         case 3:
                             session.sendMessage(`您的权限结束时间: ${moment(this.administrators.get(msg.from.id).expired).format('YYYY-MM-DD HH:mm:ss')}`);
                             return;
