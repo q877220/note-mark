@@ -45,11 +45,13 @@ async function getYesterday (session) {
 
         let inObj = {};
         let outObj = {};
+        let outTotal = 0;
         records.forEach(item => {
             switch (item.direct) {
                 case 1:
                 case 2:
                     data.inCnt++;
+                    data.inTotal += item.money;
                     data.inList.push({ name: item.name, value: `${item.money}`, op: item.operator, time: moment(item.created_at).add(8, 'h').format('YYYY-MM-DD HH:mm:ss') });
                     if (inObj[item.name]) {
                         inObj[item.name]['value'] += item.money;
@@ -60,18 +62,20 @@ async function getYesterday (session) {
                     break;
                 case 3:
                     data.outCnt++;
-                    let d = { name: item.name, value: `${session.numFormat(item.value)}`, op: item.op, time: moment(item.time).format('YYYY-MM-DD HH:mm:ss') };
+                    let d = { name: item.name, value: `${session.numFormat(item.money)}`, op: item.op, time: moment(item.time).format('YYYY-MM-DD HH:mm:ss') };
 
                     if (!outObj[item.name]) {
                         outObj[item.name] = { value: 0 };
                     }
 
                     if (item.rate === 1) {
+                        outTotal += item.money;
                         outObj[item.name]['value'] += item.money;
-                        d.value = `${session.numFormat(item.value)}`;
+                        d.value = `${session.numFormat(item.money)}`;
                     } else {
+                        outTotal += item.money * item.rate;
                         outObj[item.name]['value'] += item.money * item.rate;
-                        d.value = `${session.numFormat(item.value)}u | (${session.numFormat(item.money * item.rate)})`;
+                        d.value = `${session.numFormat(item.money)}u | (${session.numFormat(item.money * item.rate)})`;
                     }
 
                     data.outList.push(d);
@@ -79,14 +83,29 @@ async function getYesterday (session) {
             }
         });
 
+
+
         for (let key in inObj) {
-            data.inSummary.push({ name: key, value: `${session.numFormat(obj[key].value)}` });
+            data.inSummary.push({ name: key, value: `${session.numFormat(inObj[key].value)}` });
         }
 
         for (let key in outObj) {
-            data.outSummary.push({ name: key, value: `${session.numFormat(obj[key].value)}` });
+            data.outSummary.push({ name: key, value: `${session.numFormat(outObj[key].value)}` });
         }
 
+        let discribeT = _.round(data.inTotal * (1 - session.getRate() / 100), 2);
+        let hasDistribe = _.round(outTotal, 2);
+        let unDistribe = _.round(discribeT - hasDistribe, 2);
+
+        data.distribeTotal = `${session.numFormat(discribeT)}`;
+        data.hasDistribe = `${session.numFormat(hasDistribe)}`;
+        data.unDistribe = `${session.numFormat(unDistribe)}`;
+
+        if (session.isSetExchRate()) {
+            data.distribeTotal = `${data.distribeTotal} | ${session.numFormat(discribeT / session.getExchRate())} USDT`;
+            data.hasDistribe = `${data.hasDistribe} | ${session.numFormat(hasDistribe / session.getExchRate())} USDT`;
+            data.unDistribe = `${data.unDistribe} | ${session.numFormat(unDistribe / session.getExchRate())} USDT`;
+        }
         return data;
     } catch (e) {
         console.error(e);
@@ -106,14 +125,14 @@ function billData (session) {
         outList: [],
         outSummary: [],
         inTotal: session.numFormat(session.inTotal),
-        rate: session.rate,
+        rate: session.getRate(),
         exchRate: session.isSetExchRate() ? session.getExchRate() : 0,
         distribeTotal: ``,
         hasDistribe: ``,
         unDistribe: ``
     };
 
-    let discribeT = _.round(session.inTotal * (1 - session.rate / 100), 2);
+    let discribeT = _.round(session.inTotal * (1 - session.getRate() / 100), 2);
     let hasDistribe = _.round(session.outTotal, 2);
     let unDistribe = _.round(discribeT - hasDistribe, 2);
 
