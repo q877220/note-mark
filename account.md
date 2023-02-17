@@ -16,3 +16,9 @@
 
 # gmail
 - tinycalf86@gmail.com
+
+# vultr
+- 常规13个字符，首字母大写
+
+
+A3!scvb(=mgC+whu
