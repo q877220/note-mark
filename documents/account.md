@@ -20,5 +20,7 @@
 # vultr
 - 常规13个字符，首字母大写
 
-
-A3!scvb(=mgC+whu
+# chatGPT
+- url:  https://openai.com/blog/chatgpt/
+- user: tinycalf86@gmail.com  
+- pwd:  常规12个字符

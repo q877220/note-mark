@@ -26,17 +26,19 @@ cmdReg.set('开始', new RegExp(/^开始$/));
 cmdReg.set('清理今日账单', new RegExp(/^清理(今日)?(账单|数据)$/));
 cmdReg.set('显示账单', new RegExp(/^显示账单$/));
 
-cmdReg.set('下发', new RegExp(/下发\s*\d+(u|U)?$/));
+cmdReg.set('下发', new RegExp(/下发\s*[-]?\d+(u|U)?$/));
 cmdReg.set('设置费率', new RegExp(/^设置费率\s*\d+(\.\d+)?%$/));
 cmdReg.set('设置汇率', new RegExp(/^设置汇率\s*\d+(\.\d+)?$/));
-cmdReg.set('+', new RegExp(/.*[入款]?\s*\+\d{1,}(\.\d+)?$/));
-cmdReg.set('-', new RegExp(/.*[入款]?\s*-\d{1,}(\.\d+)?$/));
+cmdReg.set('+', new RegExp(/.*\+\d{1,}(\.\d+)?$/));
+cmdReg.set('-', new RegExp(/.*-\d{1,}(\.\d+)?$/));
+cmdReg.set('入款', new RegExp(/.*入款\s*[-]?\d{1,}$/));
 cmdReg.set('设置操作员', new RegExp(/^设置操作[员|人].+/));
 cmdReg.set('删除操作员', new RegExp(/^删除操作[员|人].+/));
 cmdReg.set('显示操作员', new RegExp(/^显示操作[员|人]$/));
 cmdReg.set('结束记录', new RegExp(/^结束记录$/));
 
-// cmdReg.set('r0', new RegExp(/^r0$/));
+cmdReg.set('r0', new RegExp(/^r0$/));
+cmdReg.set('显示USDT价格', new RegExp(/^显示USDT价格$/));
 cmdReg.set('lk', new RegExp(/^lk$/));
 cmdReg.set('lz', new RegExp(/^lz$/));
 cmdReg.set('lw', new RegExp(/^lw$/));
@@ -268,20 +270,28 @@ class ChatSession {
             this.outAccount = [];
             this.sendMessage(`清理成功`);
         } else {
-            let inDel = _.remove(this.inAccount, item => {
+            _.remove(this.inAccount, item => {
                 return item.time < time;
             });
-            inDel.forEach(item => {
-                this.inCnt--;
-                this.inTotal -= item.value;
+            this.inCnt = 0;
+            this.inTotal = 0;
+            this.inAccount.forEach(item => {
+                this.inCnt++;
+                this.inTotal += item.value;
             });
 
-            let outDel = _.remove(this.outAccount, item => {
+            _.remove(this.outAccount, item => {
                 return item.time < time;
             });
-            outDel.forEach(item => {
-                this.outCnt--;
-                this.outTotal -= item.value * this.getExchRate();
+            this.outCnt = 0;
+            this.outTotal = 0;
+            this.outAccount.forEach(item => {
+                this.outCnt++;
+                if (!!item.unit) {
+                    this.outTotal += item.value * this.getExchRate();
+                } else {
+                    this.outTotal += item.value;
+                }
             });
         }
     }
@@ -317,10 +327,6 @@ class ChatSession {
         let value = parseFloat(num);
 
         name = _.trim(name);
-        if (new RegExp(/.*入款$/).test(name)) {
-            name = name.replace(/入款$/g, '');
-        }
-        name = _.trim(name);
         let data = {
             name: name || ' ', time: moment().valueOf(), value, op: `${from.username}` || `${from.first_name} ${from.last_name}`
         };
@@ -334,7 +340,7 @@ class ChatSession {
         this.inAccount.push(data);
 
         db('tb_session_account_detail')
-            .insert({ chat_id: this.id, name, direct: '+' === type ? 1 : 2, money: data.value, operator: `${from.username}` || `${from.first_name} ${from.last_name}` })
+            .insert({ chat_id: this.id, name, direct: data.value >= 0 ? 1 : 2, money: data.value, operator: `${from.username}` || `${from.first_name} ${from.last_name}` })
             .on('query', sql => {
                 console.log(sql);
             }).catch(err => {
@@ -506,11 +512,8 @@ class Chat {
                             inTotal += money;
                             break;
                         case 3:
-                            outAcc.push({ name: name || ' ', time: moment(created_at).add(8, 'h').valueOf(), unit: rate !== 1, value: money, op: operator })
+                            outAcc.push({ name: name || ' ', time: moment(created_at).add(8, 'h').valueOf(), unit: rate !== 1 ? rate : null, value: money, op: operator })
                             outCnt++;
-                            if (2 === direct) {
-                                money *= -1;
-                            }
                             outTotal += money;
                             break;
                     }
@@ -733,10 +736,10 @@ class Chat {
                 instance.addAdministrator(user);
                 ctx = `申请成功！\n`;
                 ctx = `${ctx}使用说明：\n`;
-                ctx = `${ctx}1.增加机器人@${instance.name} 进群;\n2.输入: 设置费率X.X%\n3.输入: 开始\n\n`;
+                ctx = `${ctx}1.增加机器人@${instance.name} 进群;\n2.输入: 设置费率X.Y%\n3.输入: 开始\n\n`;
                 ctx = `${ctx}4.其它命令：`;
-                ctx = `${ctx}某某某+XXX    入款XXX元\n下发XXX  也可下发XXXu\n显示账单\n设置操作人 @xxxxx    设置群成员，输入@前打个空格，会弹出选择\n\n`;
-                ctx = `${ctx}显示USDT价格\n设置汇率6.5    显示美元，汇率可变，隐藏设置为0\n清理今天数据\n\n`;
+                ctx = `${ctx}某某某+XXX    \n下发XXX  也可下发XXXu\n显示账单\n设置操作人 @xxxxx    设置群成员，输入@前打个空格，会弹出选择\n\n`;
+                ctx = `${ctx}显示USDT价格(或r0)\n设置汇率X.Y    显示美元，汇率可变，隐藏设置为0\n清理今天数据\n\n`;
                 ctx = `${ctx}5.如果输入错误，可以用 某某某-XXX  或 下发-XXX，来修正其它功能请用正式版\n\n图解：`;
 
                 const photo = `${__dirname}/../public/picture/shiyong_rate.jpg`;
@@ -789,17 +792,19 @@ class Chat {
             ctx = `${ctx}②输入”设置费率X.X%“  或后期可以“更改费率X.X%”\n`;
             ctx = `${ctx}③输入”开始”，每天必须先输入此命令，机器人才会开始记录。默认是每天4点至第二天4点\n\n\n`;
             ctx = `${ctx}④其它命令：\n`;
-            ctx = `${ctx}xxxxx+XXX    入款XXX元。 \n下发XXX\n下发XXXu\n`;
+            ctx = `${ctx}xxxxx+XXX \n下发XXX\n下发XXXu\n`;
             ctx = `${ctx}显示账单   显示最近5条数据。\n`;
             ctx = `${ctx}显示完整账单  出现链接，点击链接显示今天/昨天所有入款数据。\n\n`;
             ctx = `${ctx}设置操作人 @xxxxx @xxxx  设置群成员使用。先打空格再打@，会弹出选择更方便。注：再次设置的话就是新增。\n`;
             ctx = `${ctx}显示操作人\n`;
             ctx = `${ctx}删除操作人 @xxxxx 先输入“删除操作人” 然后空格，再打@，就出来了选择，这样更方便\n\n`;
-            ctx = `${ctx}显示USDT价格\n`;
-            ctx = `${ctx}设置美元汇率6.5  如需显示美元，可设置这个，汇率可改变，隐藏的话再次设置为0。\n\n`;
+            ctx = `${ctx}显示USDT价格(或r0)\n`;
+            ctx = `${ctx}设置汇率6.5  如需显示汇率，可设置这个，汇率可改变，隐藏的话再次设置为0。\n\n`;
             ctx = `${ctx}清理今天数据  慎用，必须由权限人发送命令\n`;
             ctx = `${ctx}结束记录\n\n`;
-            ctx = `${ctx}⑤如果输入错误，可以用 xxxx-XXX  或 下发-XXX，来修正`;
+            ctx = `${ctx}⑤如果输入错误，可以用 xxxx-XXX  或 下发-XXX，来修正\n\n`;
+            ctx = `${ctx}⑥【USDT独立功能】命令：\nlk  列出欧易实时价银行卡价格\nlz  列出支付宝价格\nlw  列出微信价格\n\n`;
+            ctx = `${ctx}k100   实时卡价计算100元换算usdt\nz100   实时支价计算100元换算usdt\nw100   实时微价计算100元换算usdt`;
 
             this.bot.sendMessage(msg.chat.id, ctx);
         });
@@ -957,10 +962,9 @@ class Chat {
                         session.sendMessage(`设置成功，当前USD汇率为[${exchRate}]！`);
                         return;
                     case '+':
-                        session.record(msg.from, txt, '+');
-                        return;
                     case '-':
-                        session.record(msg.from, txt, '-');
+                    case '入款':
+                        session.record(msg.from, txt, key);
                         return;
                     case '下发':
                         let [name, num, tmp] = txt.split(`${key}`);
@@ -1019,6 +1023,7 @@ class Chat {
                         session.sendMessage(echo);
                         return;
                     case 'r0':
+                    case '显示USDT价格':
                         let r = await service({
                             url: config.mifeng.url,
                             headers: { 'X-API-KEY': config.mifeng.token }
@@ -1028,7 +1033,7 @@ class Chat {
                                 return val.c === 'CNY';
                             });
                             if (realTimeRate) {
-                                session.sendMessage(`当前USD兑人民币汇率为[${realTimeRate.r}]！`);
+                                session.sendMessage(`当前USDT兑人民币汇率为[${realTimeRate.r}]！`);
                             }
                         }
                         return;
