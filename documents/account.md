@@ -38,3 +38,7 @@
 # hostinger VPS 
 - url https://hpanel.hostinger.com/
 - 谷歌账户登录
+
+# telegram VPS
+- user: root
+- pwd: 常规13个字符，首字母大写
