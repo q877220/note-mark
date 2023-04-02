@@ -42,3 +42,11 @@
 # telegram VPS
 - user: root
 - pwd: 常规13个字符，首字母大写
+
+# TronGrid(波场)
+- user: 163邮箱
+- 常规13个字符
+
+# [Okex](https://www.vkhwabf.cn/cn)
+- user: phone
+- 常规13个字符首字母大写，中间用&分隔
